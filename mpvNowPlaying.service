@@ -1,0 +1,11 @@
+[Unit]
+Description=MPV Now Playing
+After=network.target
+
+[Service]
+User=grmrgecko
+Type=simple
+ExecStart=/usr/local/bin/mpvNowPlaying
+
+[Install]
+WantedBy=multi-user.target
