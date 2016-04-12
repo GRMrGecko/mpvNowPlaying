@@ -29,20 +29,6 @@ func MPVSocket() string {
 	return path.Join(usr.HomeDir, ".config/mpv/mpv.sock")
 }
 
-type MPVError struct {
-	s string
-}
-
-func (e *MPVError) Error() string {
-	return e.s
-}
-
-func newMPVError(s string) *MPVError {
-	err := new(MPVError)
-	err.s = s
-	return err
-}
-
 type FloatResult struct {
 	Data  float64 `json:"data"`
 	Error string  `json:"error"`
@@ -62,7 +48,7 @@ func GetPropertyFloat(conn net.Conn, propertyName string) (float64, error) {
 		log.Fatal("Config file error: ", err)
 	}
 	if floatResult.Error != "success" {
-		return -1, newMPVError(floatResult.Error)
+		return -1, fmt.Errorf(floatResult.Error)
 	}
 	return floatResult.Data, nil
 }
@@ -86,7 +72,7 @@ func GetPropertyString(conn net.Conn, propertyName string) (string, error) {
 		log.Fatal("Config file error: ", err)
 	}
 	if stringResult.Error != "success" {
-		return "", newMPVError(stringResult.Error)
+		return "", fmt.Errorf(stringResult.Error)
 	}
 	return stringResult.Data, nil
 }
