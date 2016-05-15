@@ -1,11 +1,3 @@
-//
-//  mpvNowPlaying.go
-//  mpvNowPlaying
-//
-//  Created by Mr. Gecko on 4/2/16.
-//  Copyright (c) 2016 Mr. Gecko's Media (James Coleman). All rights reserved. http://mrgeckosmedia.com/
-//
-
 package main
 
 import (
@@ -29,6 +21,20 @@ func MPVSocket() string {
 	return path.Join(usr.HomeDir, ".config/mpv/mpv.sock")
 }
 
+type MPVError struct {
+	s string
+}
+
+func (e *MPVError) Error() string {
+	return e.s
+}
+
+func newMPVError(s string) *MPVError {
+	err := new(MPVError)
+	err.s = s
+	return err
+}
+
 type FloatResult struct {
 	Data  float64 `json:"data"`
 	Error string  `json:"error"`
@@ -48,7 +54,7 @@ func GetPropertyFloat(conn net.Conn, propertyName string) (float64, error) {
 		log.Fatal("Config file error: ", err)
 	}
 	if floatResult.Error != "success" {
-		return -1, fmt.Errorf(floatResult.Error)
+		return -1, newMPVError(floatResult.Error)
 	}
 	return floatResult.Data, nil
 }
@@ -72,7 +78,7 @@ func GetPropertyString(conn net.Conn, propertyName string) (string, error) {
 		log.Fatal("Config file error: ", err)
 	}
 	if stringResult.Error != "success" {
-		return "", fmt.Errorf(stringResult.Error)
+		return "", newMPVError(stringResult.Error)
 	}
 	return stringResult.Data, nil
 }
@@ -116,7 +122,7 @@ func (m *MPV) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		reesultData.Error = "Error occured attempting to gather information"
 		out, _ := json.Marshal(reesultData)
 		writer.Write(out)
-		log.Println(err)
+		log.Println(err, "media-title")
 		return
 	}
 
@@ -125,66 +131,66 @@ func (m *MPV) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		reesultData.Error = "Error occured attempting to gather information"
 		out, _ := json.Marshal(reesultData)
 		writer.Write(out)
-		log.Println(err)
+		log.Println(err, "playback-time")
 		return
 	}
 	playbackTime := time.Duration(playbackTimeFloat) * time.Second
 
 	durationFloat, err := GetPropertyFloat(conn, "duration")
 	if err != nil {
-		reesultData.Error = "Error occured attempting to gather information"
-		out, _ := json.Marshal(reesultData)
-		writer.Write(out)
-		log.Println(err)
-		return
+		log.Println(err, "duration")
 	}
 	duration := time.Duration(durationFloat) * time.Second
 
 	fileSize, err := GetPropertyFloat(conn, "file-size")
 	if err != nil {
-		log.Println(err)
-		return
+		log.Println(err, "file-size")
 	}
-
 	performer := ""
 	album := ""
-	videoFormat, err := GetPropertyString(conn, "video-format")
-	if err != nil {
-		log.Println(err)
-	}
-	if videoFormat == "" {
-		workingDirectory, err := GetPropertyString(conn, "working-directory")
+	if fileSize != -1 {
+		videoFormat, err := GetPropertyString(conn, "video-format")
 		if err != nil {
 			log.Println(err)
 		}
-
-		filename, err := GetPropertyString(conn, "filename")
-		if err != nil {
-			log.Println(err)
-		}
-		filePath := path.Join(workingDirectory, filename)
-
-		info, err := mediainfo.Open(filePath)
-		if err != nil {
-			log.Println(err)
-		} else {
-			defer info.Close()
-
-			performer, err = info.Get("Performer", 0, mediainfo.General)
+		if videoFormat == "" {
+			workingDirectory, err := GetPropertyString(conn, "working-directory")
 			if err != nil {
 				log.Println(err)
 			}
 
-			album, err = info.Get("Album", 0, mediainfo.General)
+			filename, err := GetPropertyString(conn, "filename")
 			if err != nil {
 				log.Println(err)
+			}
+			filePath := path.Join(workingDirectory, filename)
+
+			info, err := mediainfo.Open(filePath)
+			if err != nil {
+				log.Println(err)
+			} else {
+				defer info.Close()
+
+				performer, err = info.Get("Performer", 0, mediainfo.General)
+				if err != nil {
+					log.Println(err)
+				}
+
+				album, err = info.Get("Album", 0, mediainfo.General)
+				if err != nil {
+					log.Println(err)
+				}
 			}
 		}
 	}
 
-	reesultData.Result = fmt.Sprintf("Now playing %v %v %v / %v (%d%%)", title, SizeToString(fileSize), playbackTime, duration, int64((playbackTimeFloat/durationFloat)*100))
-	if performer != "" {
-		reesultData.Result = fmt.Sprintf("Now playing %v by %v from %v %v %v / %v (%d%%)", title, performer, album, SizeToString(fileSize), playbackTime, duration, int64((playbackTimeFloat/durationFloat)*100))
+	if fileSize == -1 {
+		reesultData.Result = fmt.Sprintf("Now playing %v %v", title, playbackTime)
+	} else {
+		reesultData.Result = fmt.Sprintf("Now playing %v %v %v / %v (%d%%)", title, SizeToString(fileSize), playbackTime, duration, int64((playbackTimeFloat/durationFloat)*100))
+		if performer != "" {
+			reesultData.Result = fmt.Sprintf("Now playing %v by %v from %v %v %v / %v (%d%%)", title, performer, album, SizeToString(fileSize), playbackTime, duration, int64((playbackTimeFloat/durationFloat)*100))
+		}
 	}
 	out, _ := json.Marshal(reesultData)
 	writer.Write(out)
